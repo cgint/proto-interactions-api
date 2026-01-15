@@ -108,6 +108,20 @@
         margin-bottom: 6px;
         font-family: var(--mono);
       }
+      .msgs {
+        display: grid;
+        gap: 6px;
+      }
+      .msgline {
+        border-radius: 10px;
+        border: 1px solid rgba(125, 140, 170, 0.18);
+        background: rgba(125, 140, 170, 0.06);
+        padding: 8px 10px;
+        font-size: 13px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
       .line {
         font-family: var(--mono);
         font-size: 12px;
@@ -234,11 +248,13 @@
         const turn = {
           id: null,
           userText,
-          assistantText: "",
+          currentStreamText: "",
           status: "",
           interactionId: null,
-          assistantNode: null,
+          messagesNode: null,
           metaNode: null,
+          currentMessageNode: null,
+          seenMessages: new Set(),
         };
 
         const wrap = document.createElement("div");
@@ -257,16 +273,16 @@
         meta.textContent = "assistant: queued";
         assistantBubble.appendChild(meta);
 
-        const assistantTextNode = document.createElement("div");
-        assistantTextNode.textContent = "";
-        assistantBubble.appendChild(assistantTextNode);
+        const messagesNode = document.createElement("div");
+        messagesNode.className = "msgs";
+        assistantBubble.appendChild(messagesNode);
 
         wrap.appendChild(assistantBubble);
 
         summary.appendChild(wrap);
         summary.scrollTop = summary.scrollHeight;
 
-        turn.assistantNode = assistantTextNode;
+        turn.messagesNode = messagesNode;
         turn.metaNode = meta;
         return turn;
       }
@@ -353,6 +369,43 @@
         return null;
       }
 
+      function normalizeMsg(text) {
+        return String(text).replace(/\s+/g, " ").trim();
+      }
+
+      function ensureCurrentLine(turn) {
+        if (turn.currentMessageNode) return turn.currentMessageNode;
+        const line = document.createElement("div");
+        line.className = "msgline";
+        line.textContent = "";
+        turn.messagesNode.appendChild(line);
+        turn.currentMessageNode = line;
+        return line;
+      }
+
+      function finalizeCurrentLine(turn) {
+        if (!turn.currentMessageNode) return;
+        const finalText = String(turn.currentMessageNode.textContent || "");
+        const norm = normalizeMsg(finalText);
+        if (norm && !turn.seenMessages.has(norm)) {
+          turn.seenMessages.add(norm);
+        }
+        turn.currentStreamText = "";
+        turn.currentMessageNode = null;
+      }
+
+      function appendNewLine(turn, text) {
+        const norm = normalizeMsg(text);
+        if (!norm) return;
+        if (turn.seenMessages.has(norm)) return;
+        turn.seenMessages.add(norm);
+
+        const line = document.createElement("div");
+        line.className = "msgline";
+        line.textContent = text;
+        turn.messagesNode.appendChild(line);
+      }
+
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const wsUrl = `${proto}://${location.host}/ws`;
       let ws;
@@ -419,18 +472,45 @@
 
             if (isContentEvent(msg)) {
               const textPart = extractText(msg.data);
-              if (textPart) {
-                const isDelta = typeof msg.event === "string" && msg.event.includes("delta");
-                if (isDelta) {
-                  turn.assistantText += textPart;
-                } else if (!turn.assistantText) {
-                  turn.assistantText = textPart;
-                } else if (textPart.length > turn.assistantText.length) {
-                  turn.assistantText = textPart;
-                }
-                turn.assistantNode.textContent = turn.assistantText;
-                summary.scrollTop = summary.scrollHeight;
+              const eventName = typeof msg.event === "string" ? msg.event : "";
+
+              if (eventName.includes("content.start")) {
+                finalizeCurrentLine(turn);
+                turn.currentStreamText = "";
+                ensureCurrentLine(turn);
               }
+
+              if (textPart) {
+                const isDelta = eventName.includes("delta");
+                if (isDelta) {
+                  turn.currentStreamText += textPart;
+                  ensureCurrentLine(turn).textContent = turn.currentStreamText;
+                } else if (eventName.includes("content.stop")) {
+                  turn.currentStreamText += textPart;
+                  ensureCurrentLine(turn).textContent = turn.currentStreamText;
+                  finalizeCurrentLine(turn);
+                } else if (eventName.startsWith("content.")) {
+                  // Non-delta content event with text; show as a line.
+                  appendNewLine(turn, textPart);
+                } else {
+                  // Fallback (e.g. outputs-like payload). Show as a line.
+                  appendNewLine(turn, textPart);
+                }
+              }
+
+              if (eventName.includes("content.stop")) {
+                finalizeCurrentLine(turn);
+              }
+
+              if (Array.isArray(msg.data?.outputs)) {
+                for (const out of msg.data.outputs) {
+                  if (out && typeof out === "object" && typeof out.text === "string" && out.text) {
+                    appendNewLine(turn, out.text);
+                  }
+                }
+              }
+
+              summary.scrollTop = summary.scrollHeight;
             }
           }
         };
