@@ -30,6 +30,7 @@ Open `http://localhost:8000/`.
 ## Elixir / Phoenix LiveView Playgrounds
 
 We also provide two Elixir-based implementations for those who prefer Phoenix LiveView.
+**Prereq:** You must have [Elixir installed](https://elixir-lang.org/install.html) on your machine.
 
 ### 1. Scripted Variant (`playground/`)
 A lightweight, script-based approach using `Mix.install`. Great for quick experiments without a full project structure.
