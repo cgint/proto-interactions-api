@@ -43,6 +43,25 @@ From the announcement + docs:
 - `POST https://generativelanguage.googleapis.com/v1beta/interactions`
 - OpenAPI spec: `https://ai.google.dev/api/interactions.openapi.json`
 
+## Most important behavioral notes (practical)
+
+- **1 request = 1 Interaction**: Each `interactions.create` call creates a new `Interaction` resource representing a full “turn” (inputs, tool calls/results, outputs). Source: Interactions docs “How the Interactions API works” (`https://ai.google.dev/gemini-api/docs/interactions`) and API reference (`https://ai.google.dev/api/interactions-api`).
+- **Server-side conversation state is explicit**: Pass `previous_interaction_id` to continue a conversation without resending history. Only *history* is preserved; other settings (tools, system instruction, generation config) are **interaction-scoped** and must be re-specified each call. Source: “Server-side state management” (`https://ai.google.dev/gemini-api/docs/interactions`).
+- **Ordering/concurrency is client-managed**:
+  - The docs describe `previous_interaction_id` as using the `id` of a completed interaction to continue the conversation. Source: “Server-side state management” (`https://ai.google.dev/gemini-api/docs/interactions`).
+  - The API does not document any server-side queuing/serialization guarantee for multiple simultaneous `interactions.create` calls; treat strict ordering as a **client responsibility**. (Practical implication of the above.)
+  - If you need strict in-order turns, wait for interaction A to complete, then call B with `previous_interaction_id=A.id`.
+- **Streaming is SSE**: With `stream=true`, the response is Server-Sent Events. Source: Interactions docs + API reference (`https://ai.google.dev/gemini-api/docs/interactions`, `https://ai.google.dev/api/interactions-api`).
+- **Resume streaming (OpenAPI)**: `GET /v1beta/interactions/{id}?stream=true` supports `last_event_id` to resume “from the next chunk”. Source: OpenAPI spec (`https://ai.google.dev/api/interactions.openapi.json`), `GetInteraction` query parameter `last_event_id`.
+- **Background execution + cancel**: `background=true` runs the interaction asynchronously server-side; cancellation exists for background interactions via `POST /v1beta/interactions/{id}/cancel`. Source: Interactions docs + OpenAPI spec (`https://ai.google.dev/gemini-api/docs/interactions`, `https://ai.google.dev/api/interactions.openapi.json`).
+
+## Sources (primary)
+
+- Announcement blog post: `https://blog.google/innovation-and-ai/technology/developers-tools/interactions-api/`
+- Interactions docs: `https://ai.google.dev/gemini-api/docs/interactions`
+- API reference: `https://ai.google.dev/api/interactions-api`
+- OpenAPI spec: `https://ai.google.dev/api/interactions.openapi.json`
+
 ### Python SDK
 
 The docs use the Google GenAI SDK:
@@ -156,7 +175,7 @@ def main() -> None:
             continue
 
         interaction = client.interactions.create(
-            model="gemini-3-flash-preview",
+            model="gemini-2.5-flash",
             input=user_text,
             previous_interaction_id=previous_id,
         )

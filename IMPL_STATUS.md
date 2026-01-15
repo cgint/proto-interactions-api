@@ -32,6 +32,7 @@ Build a minimal **text-only** local web GUI that gives a “feel” for Gemini *
 ## Findings / learnings (so far)
 
 - The Interactions API streams results via Server-Sent Events (SSE); event types observed in existing samples include `interaction.status_update`, `content.start`, `content.delta`, `content.stop`, `error`.
+- Concurrency/ordering: docs describe `previous_interaction_id` as the `id` of a **completed** interaction; if you fire multiple `interactions.create` calls “at once”, they can run in parallel and will effectively **branch** from whatever `previous_interaction_id` you provided (no server-side guarantee that “later requests wait” for earlier ones).
 - The A2A sample transport (branch `origin/interactions-api` in `/Users/cgint/dev-external/a2a-samples`) shows how to:
   - call `POST /v1beta/interactions` with `stream=true`
   - resume with `last_event_id` on `GET /v1beta/interactions/{id}?stream=true`
@@ -46,3 +47,6 @@ Build a minimal **text-only** local web GUI that gives a “feel” for Gemini *
 - 2026-01-15: Converted to `uv` + `pyproject.toml`; added `interactions-web` entrypoint; removed `requirements.txt`.
 - 2026-01-15: Adjusted `uv` workflow to use `uv run python -m web_demo` (no packaged entry points).
 - 2026-01-15: Rewrote `README.md` to explain the repo from a user perspective (what you’ll experience and how to try it).
+- 2026-01-15: Checked Interactions API docs for concurrency implications of `previous_interaction_id` (sequencing is a client responsibility).
+- 2026-01-15: Updated `GOOGLE_INTERACTIONS_API_FINDINGS.md` with the key behavioral notes (state, streaming, resume, cancellation, ordering).
+- 2026-01-15: Added explicit source links for key behavioral notes in `GOOGLE_INTERACTIONS_API_FINDINGS.md`.
