@@ -66,6 +66,31 @@ Prereqs:
 - Elixir installed
 - `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) set in your environment
 
+## Option A: Minimal Mix project (preferred next step)
+
+Location: `playground_mix/`
+
+```bash
+cd playground_mix
+mix deps.get
+mix run --no-halt
+```
+
+Optional: choose a port (otherwise it auto-picks `4000` or the next available):
+
+```bash
+PORT=4100 mix run --no-halt
+```
+
+Then open (use the printed port if not `4000`):
+
+- `http://localhost:4000/`
+- `http://localhost:4000/health`
+
+Note: in restricted sandboxes, `mix compile`/`mix run` may fail with `Mix.PubSub ... :eperm` due to TCP socket permissions; running from a normal terminal session should work.
+
+## Option B: Script runner (current)
+
 Run:
 
 ```bash
