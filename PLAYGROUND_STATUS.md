@@ -2,7 +2,7 @@
 
 ## Goal / success criteria
 
-Create a **shareable single-file** Phoenix LiveView Playground script that mimics the current demo:
+Create a **shareable launcher** for a Phoenix LiveView Playground that mimics the current demo:
 
 - `GET /` shows a minimal “Interactions API streaming demo” UI with:
   - left pane: raw event log
@@ -23,8 +23,8 @@ Create a **shareable single-file** Phoenix LiveView Playground script that mimic
 ## Current status
 
 - Done:
-  - `interactions_playground.exs` contains endpoint/router/liveview + SSE client + `/health`.
-  - Syntax sanity check: `elixir -e 'Code.string_to_quoted!(File.read!(\"interactions_playground.exs\"))'` passes.
+  - `playground/run.exs` launches the playground; code is split into `playground/*.ex` modules.
+  - Compatibility shim restored: `interactions_playground.exs` requires `playground/run.exs`.
   - Fixed LiveView reconnect loop caused by missing CSRF params + duplicate LiveSocket init:
     - Added `InteractionsPlayground.Layout` with `<meta name="csrf-token" ...>` and a single LiveSocket init passing `_csrf_token`.
     - Removed the extra LiveSocket init script from the LiveView template.
@@ -32,6 +32,8 @@ Create a **shareable single-file** Phoenix LiveView Playground script that mimic
     - Added `GET /sw.js` (no-op) to satisfy browsers trying to load a service worker.
     - Added `InteractionsPlayground.ErrorView` so `NoRouteError` can render a 404 instead of crashing.
   - Fixed runtime 500 on `/` by setting `secret_key_base` (cookie session requires ≥64 bytes).
+  - Fixed `unknown registry: InteractionsPlayground.Finch` by starting Finch under the endpoint supervision tree (`child_specs`).
+  - Added port selection logic: respects `PORT`, otherwise picks `4000` or the next available port.
 - Not verified (runtime):
   - Running `Mix.install/1` may need network access to fetch deps the first time.
   - Interactions API SSE field shapes should be validated against real traffic.
@@ -66,13 +68,19 @@ Run:
 elixir playground/run.exs
 ```
 
+Optional: choose a port (otherwise it auto-picks `4000` or the next available):
+
+```bash
+PORT=4100 elixir playground/run.exs
+```
+
 Compatibility shim (old command still works):
 
 ```bash
 elixir interactions_playground.exs
 ```
 
-Then open:
+Then open (use the printed port if not `4000`):
 
 - `http://localhost:4000/`
 - `http://localhost:4000/health`

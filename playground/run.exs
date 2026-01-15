@@ -11,6 +11,7 @@ Mix.install([
 
 base = __DIR__
 
+Code.require_file(Path.join(base, "port.ex"))
 Code.require_file(Path.join(base, "config.ex"))
 Code.require_file(Path.join(base, "sse.ex"))
 Code.require_file(Path.join(base, "interactions_client.ex"))
@@ -22,11 +23,12 @@ Code.require_file(Path.join(base, "live.ex"))
 Code.require_file(Path.join(base, "router.ex"))
 Code.require_file(Path.join(base, "endpoint.ex"))
 
-{:ok, _} = Finch.start_link(name: InteractionsPlayground.Finch)
+port = InteractionsPlayground.Port.pick()
 
 Application.put_env(
   :phoenix_playground,
   InteractionsPlayground.Endpoint,
+  http: [ip: {127, 0, 0, 1}, port: port],
   secret_key_base:
     System.get_env("PLAYGROUND_SECRET_KEY_BASE") ||
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -36,5 +38,9 @@ Application.put_env(
   ]
 )
 
-PhoenixPlayground.start(endpoint: InteractionsPlayground.Endpoint)
-
+PhoenixPlayground.start(
+  endpoint: InteractionsPlayground.Endpoint,
+  child_specs: [
+    {Finch, name: InteractionsPlayground.Finch}
+  ]
+)
