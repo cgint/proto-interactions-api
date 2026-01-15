@@ -230,16 +230,33 @@ defmodule InteractionsPlayground.Layout do
         <script defer src="/assets/phoenix/phoenix.js"></script>
         <script defer src="/assets/phoenix_live_view/phoenix_live_view.js"></script>
 
-        <script defer>
+        <script>
           (function () {
-            if (window.liveSocket) return;
-            var meta = document.querySelector("meta[name='csrf-token']");
-            if (!meta) return;
-            var csrfToken = meta.getAttribute("content");
-            if (!window.LiveView || !window.LiveView.LiveSocket || !window.Phoenix || !window.Phoenix.Socket) return;
-            var liveSocket = new window.LiveView.LiveSocket("/live", window.Phoenix.Socket, {params: {_csrf_token: csrfToken}});
-            liveSocket.connect();
-            window.liveSocket = liveSocket;
+            function init() {
+              if (window.liveSocket) return;
+
+              var meta = document.querySelector("meta[name='csrf-token']");
+              if (!meta) return;
+              var csrfToken = meta.getAttribute("content");
+
+              var LiveSocket =
+                (window.LiveView && window.LiveView.LiveSocket) ||
+                (window.Phoenix && window.Phoenix.LiveView && window.Phoenix.LiveView.LiveSocket) ||
+                window.LiveSocket;
+              var Socket = (window.Phoenix && window.Phoenix.Socket) || window.Socket;
+
+              if (!LiveSocket || !Socket) return;
+
+              var liveSocket = new LiveSocket("/live", Socket, {params: {_csrf_token: csrfToken}});
+              liveSocket.connect();
+              window.liveSocket = liveSocket;
+            }
+
+            if (document.readyState === "loading") {
+              document.addEventListener("DOMContentLoaded", init);
+            } else {
+              init();
+            }
           })();
         </script>
       </head>
