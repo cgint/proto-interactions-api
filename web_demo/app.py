@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -66,13 +67,33 @@ async def ws_endpoint(websocket: WebSocket) -> None:
     async with httpx.AsyncClient(base_url=INTERACTIONS_BASE_URL, timeout=None) as client:
         while True:
             try:
-                message = await websocket.receive_text()
+                raw_message = await websocket.receive_text()
             except WebSocketDisconnect:
                 break
 
-            user_text = message.strip()
+            request_id: str | None = None
+            user_text: str | None = None
+            try:
+                parsed = json.loads(raw_message)
+                if isinstance(parsed, dict):
+                    request_id_val = parsed.get("id")
+                    text_val = parsed.get("text")
+                    if isinstance(request_id_val, str) and request_id_val:
+                        request_id = request_id_val
+                    if isinstance(text_val, str):
+                        user_text = text_val
+            except Exception:
+                pass
+
+            if user_text is None:
+                user_text = raw_message
+
+            user_text = user_text.strip()
             if not user_text:
                 continue
+
+            if not request_id:
+                request_id = uuid.uuid4().hex
 
             if user_text in {"/new", "/reset"}:
                 state.previous_interaction_id = None
@@ -80,20 +101,22 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                     json.dumps(
                         {
                             "type": "local.info",
+                            "request_id": request_id,
                             "message": "Started a new interaction (cleared previous_interaction_id).",
                         }
                     )
                 )
                 continue
 
+            request_previous_interaction_id = state.previous_interaction_id
             request_body: dict[str, Any] = {
                 "model": DEFAULT_MODEL,
                 "input": user_text,
                 "stream": True,
                 "store": True,
             }
-            if state.previous_interaction_id:
-                request_body["previous_interaction_id"] = state.previous_interaction_id
+            if request_previous_interaction_id:
+                request_body["previous_interaction_id"] = request_previous_interaction_id
 
             headers = {"x-goog-api-key": api_key, "Accept": "text/event-stream"}
 
@@ -101,9 +124,10 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                 json.dumps(
                     {
                         "type": "local.request",
+                        "request_id": request_id,
                         "request": {
                             "model": DEFAULT_MODEL,
-                            "previous_interaction_id": state.previous_interaction_id,
+                            "previous_interaction_id": request_previous_interaction_id,
                             "stream": True,
                         },
                     }
@@ -135,6 +159,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                             json.dumps(
                                 {
                                     "type": "interactions.sse",
+                                    "request_id": request_id,
                                     "event": sse.event,
                                     "id": sse.id,
                                     "data": payload,
@@ -151,6 +176,7 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                     json.dumps(
                         {
                             "type": "interactions.error",
+                            "request_id": request_id,
                             "status_code": e.response.status_code,
                             "body": error_text,
                         }
@@ -158,7 +184,9 @@ async def ws_endpoint(websocket: WebSocket) -> None:
                 )
             except Exception as e:
                 await websocket.send_text(
-                    json.dumps({"type": "local.error", "message": str(e)})
+                    json.dumps(
+                        {"type": "local.error", "request_id": request_id, "message": str(e)}
+                    )
                 )
 
 

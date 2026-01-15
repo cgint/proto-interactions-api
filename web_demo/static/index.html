@@ -219,7 +219,7 @@
       }
 
       const turns = [];
-      let activeTurn = null;
+      const turnsById = new Map();
       let latestInteractionId = null;
 
       function setSummaryTitle() {
@@ -232,6 +232,7 @@
 
       function createTurn(userText) {
         const turn = {
+          id: null,
           userText,
           assistantText: "",
           status: "",
@@ -253,7 +254,7 @@
 
         const meta = document.createElement("span");
         meta.className = "meta";
-        meta.textContent = "assistant: (waiting…)";
+        meta.textContent = "assistant: queued";
         assistantBubble.appendChild(meta);
 
         const assistantTextNode = document.createElement("div");
@@ -275,6 +276,19 @@
         if (turn.status) bits.push(`status=${turn.status}`);
         if (turn.interactionId) bits.push(`id=${turn.interactionId}`);
         turn.metaNode.textContent = bits.length ? `assistant: ${bits.join("  ")}` : "assistant:";
+      }
+
+      function randomId() {
+        if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+        return Math.random().toString(16).slice(2) + Date.now().toString(16);
+      }
+
+      function isContentEvent(msg) {
+        if (!msg || msg.type !== "interactions.sse") return false;
+        if (typeof msg.event !== "string") return false;
+        if (msg.event.startsWith("content.")) return true;
+        const data = msg.data;
+        return !!(data && typeof data === "object" && Array.isArray(data.outputs) && data.outputs.length);
       }
 
       function extractInteractionId(data) {
@@ -358,43 +372,65 @@
           }
           if (msg.type === "interactions.error" || msg.type === "local.error") {
             addLine("err", `[${msg.type}]`, msg);
-            if (activeTurn) {
-              activeTurn.status = "error";
-              updateTurnMeta(activeTurn);
+            const turn = msg.request_id ? turnsById.get(msg.request_id) : null;
+            if (turn) {
+              turn.status = "error";
+              updateTurnMeta(turn);
             }
             return;
           }
           addLine("", `[${msg.type}] ${msg.event || ""}`.trim(), msg);
 
+          if (msg.type === "local.request") {
+            const turn = msg.request_id ? turnsById.get(msg.request_id) : null;
+            if (turn) {
+              turn.status = "streaming";
+              updateTurnMeta(turn);
+            }
+            return;
+          }
+
+          if (msg.type === "local.info") {
+            const turn = msg.request_id ? turnsById.get(msg.request_id) : null;
+            if (turn) {
+              turn.status = "ok";
+              updateTurnMeta(turn);
+            }
+            return;
+          }
+
           if (msg.type === "interactions.sse") {
-            if (!activeTurn) return;
+            const turn = msg.request_id ? turnsById.get(msg.request_id) : null;
+            if (!turn) return;
 
             const interactionId = extractInteractionId(msg.data);
             if (interactionId) {
-              activeTurn.interactionId = interactionId;
+              turn.interactionId = interactionId;
               latestInteractionId = interactionId;
               setSummaryTitle();
-              updateTurnMeta(activeTurn);
+              updateTurnMeta(turn);
             }
 
             const status = extractStatus(msg.data);
             if (status) {
-              activeTurn.status = status;
-              updateTurnMeta(activeTurn);
+              turn.status = status;
+              updateTurnMeta(turn);
             }
 
-            const textPart = extractText(msg.data);
-            if (textPart) {
-              const isDelta = typeof msg.event === "string" && msg.event.includes("delta");
-              if (isDelta) {
-                activeTurn.assistantText += textPart;
-              } else if (!activeTurn.assistantText) {
-                activeTurn.assistantText = textPart;
-              } else if (textPart.length > activeTurn.assistantText.length) {
-                activeTurn.assistantText = textPart;
+            if (isContentEvent(msg)) {
+              const textPart = extractText(msg.data);
+              if (textPart) {
+                const isDelta = typeof msg.event === "string" && msg.event.includes("delta");
+                if (isDelta) {
+                  turn.assistantText += textPart;
+                } else if (!turn.assistantText) {
+                  turn.assistantText = textPart;
+                } else if (textPart.length > turn.assistantText.length) {
+                  turn.assistantText = textPart;
+                }
+                turn.assistantNode.textContent = turn.assistantText;
+                summary.scrollTop = summary.scrollHeight;
               }
-              activeTurn.assistantNode.textContent = activeTurn.assistantText;
-              summary.scrollTop = summary.scrollHeight;
             }
           }
         };
@@ -407,9 +443,12 @@
         const value = text.value.trim();
         if (!value) return;
         addLine("user", "[user]", { text: value });
-        activeTurn = createTurn(value);
-        turns.push(activeTurn);
-        ws.send(value);
+        const id = randomId();
+        const turn = createTurn(value);
+        turn.id = id;
+        turns.push(turn);
+        turnsById.set(id, turn);
+        ws.send(JSON.stringify({ id, text: value }));
         text.value = "";
         text.focus();
       });
@@ -418,7 +457,7 @@
         log.innerHTML = "";
         summary.innerHTML = '<p class="paneTitle">Summary (human-friendly)</p>';
         turns.length = 0;
-        activeTurn = null;
+        turnsById.clear();
         latestInteractionId = null;
       });
     </script>
