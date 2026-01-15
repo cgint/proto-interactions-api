@@ -27,6 +27,30 @@ Open `http://localhost:8000/`.
 - Streaming: on (events are forwarded to the browser as they arrive)
 - Session behavior: conversation state is kept per browser session while the WebSocket is open
 
+## Elixir / Phoenix LiveView Playgrounds
+
+We also provide two Elixir-based implementations for those who prefer Phoenix LiveView.
+
+### 1. Scripted Variant (`playground/`)
+A lightweight, script-based approach using `Mix.install`. Great for quick experiments without a full project structure.
+
+**Run it:**
+```bash
+elixir playground/run.exs
+```
+It will find an available port and log the URL (e.g., `http://localhost:56722`).
+
+### 2. Mix Project Variant (`playground_mix/`)
+A minimal but standard Mix project structure. Supports hot-reloading and standard tooling.
+
+**Run it:**
+```bash
+cd playground_mix
+mix deps.get
+mix phx.server
+```
+Open `http://localhost:4000`.
+
 ## Notes
 
 - The Interactions API can store interactions to support state/background work; be mindful of what you send and check the official docs for retention details.
