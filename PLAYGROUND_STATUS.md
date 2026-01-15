@@ -34,6 +34,10 @@ Create a **shareable launcher** for a Phoenix LiveView Playground that mimics th
   - Fixed runtime 500 on `/` by setting `secret_key_base` (cookie session requires ≥64 bytes).
   - Fixed `unknown registry: InteractionsPlayground.Finch` by starting Finch under the endpoint supervision tree (`child_specs`).
   - Added port selection logic: respects `PORT`, otherwise picks `4000` or the next available port.
+  - Improved the “Summary” pane to match `web_demo/static/index.html` behavior:
+    - renders assistant output as a list of message lines (deduped) with a streaming line while deltas arrive
+    - ignores `content` of type `"thought"`
+    - sets `assistant: queued` → `status=streaming` on `local.request`
 - Not verified (runtime):
   - Running `Mix.install/1` may need network access to fetch deps the first time.
   - Interactions API SSE field shapes should be validated against real traffic.

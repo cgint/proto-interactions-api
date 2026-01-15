@@ -68,12 +68,15 @@ defmodule InteractionsPlayground.Live do
               <div class="turn">
                 <div class="bubble user"><%= turn.user_text %></div>
                 <div class="bubble assistant">
-                  <span class="meta">
-                    assistant:
-                    <%= if turn.status, do: " status=#{turn.status}", else: "" %>
-                    <%= if turn.interaction_id, do: "  id=#{turn.interaction_id}", else: "" %>
-                  </span>
-                  <div><%= turn.assistant_text || "" %></div>
+                  <span class="meta"><%= assistant_meta(turn) %></span>
+                  <div class="msgs">
+                    <%= for line <- (turn.lines || []) do %>
+                      <div class="msgline"><%= line %></div>
+                    <% end %>
+                    <%= if (turn.stream_text || "") != "" do %>
+                      <div class="msgline"><%= turn.stream_text %></div>
+                    <% end %>
+                  </div>
                   <%= if turn.error do %>
                     <div class="errText"><%= turn.error %></div>
                   <% end %>
@@ -161,6 +164,17 @@ defmodule InteractionsPlayground.Live do
       .bubble.user { border-color: rgba(0, 212, 255, 0.35); background: rgba(0, 212, 255, 0.08); }
       .bubble.assistant { border-color: rgba(122, 162, 255, 0.35); background: rgba(122, 162, 255, 0.06); }
       .bubble .meta { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); }
+      .msgs { display: grid; gap: 6px; }
+      .msgline {
+        border-radius: 10px;
+        border: 1px solid rgba(125, 140, 170, 0.18);
+        background: rgba(125, 140, 170, 0.06);
+        padding: 8px 10px;
+        font-size: 13px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
       .errText { margin-top: 8px; color: var(--err); font-family: var(--mono); font-size: 12px; }
 
       .line {
@@ -259,8 +273,11 @@ defmodule InteractionsPlayground.Live do
           |> append_turn(%{
             id: turn_id,
             user_text: value,
-            assistant_text: "",
-            status: nil,
+            lines: [],
+            stream_text: "",
+            content_type: nil,
+            seen: MapSet.new(),
+            status: "queued",
             interaction_id: nil,
             error: nil
           })
@@ -291,7 +308,12 @@ defmodule InteractionsPlayground.Live do
 
   @impl true
   def handle_info({:local_request, request}, socket) do
-    {:noreply, log_line(socket, :info, "[local.request]", %{request: request})}
+    socket =
+      socket
+      |> log_line(:info, "[local.request]", %{request: request})
+      |> update_active_turn(fn turn -> %{turn | status: "streaming"} end)
+
+    {:noreply, socket}
   end
 
   def handle_info({:interactions_error, %{status_code: status, body: body}}, socket) do
@@ -356,31 +378,17 @@ defmodule InteractionsPlayground.Live do
   end
 
   defp maybe_update_text(socket, event, payload) do
-    text_part = extract_text(payload)
-
-    if is_binary(text_part) and text_part != "" do
-      is_delta =
-        is_binary(event) and String.contains?(event, "delta")
+    if content_event?(event, payload) do
+      event_name = if is_binary(event), do: event, else: ""
+      text_part = extract_text(payload)
 
       update_active_turn(socket, fn turn ->
-        current = turn.assistant_text || ""
-
-        new_text =
-          cond do
-            is_delta ->
-              current <> text_part
-
-            current == "" ->
-              text_part
-
-            String.length(text_part) > String.length(current) ->
-              text_part
-
-            true ->
-              current
-          end
-
-        %{turn | assistant_text: new_text}
+        turn
+        |> maybe_content_start(event_name, payload)
+        |> maybe_append_text(event_name, text_part)
+        |> maybe_content_stop(event_name, text_part)
+        |> maybe_outputs(payload)
+        |> maybe_finalize_on_stop(event_name)
       end)
     else
       socket
@@ -403,12 +411,22 @@ defmodule InteractionsPlayground.Live do
   defp extract_text(data) when is_binary(data), do: data
 
   defp extract_text(data) when is_map(data) do
+    # Prefer "delta.text" if present (matches web_demo behavior).
+    delta_text =
+      case data["delta"] do
+        %{"text" => t} when is_binary(t) and t != "" -> t
+        _ -> nil
+      end
+
     direct =
       (is_binary(data["text"]) && data["text"] != "" && data["text"]) ||
         (is_binary(data["delta"]) && data["delta"] != "" && data["delta"]) ||
         (is_binary(data["output_text"]) && data["output_text"] != "" && data["output_text"])
 
     cond do
+      is_binary(delta_text) ->
+        delta_text
+
       is_binary(direct) ->
         direct
 
@@ -505,5 +523,140 @@ defmodule InteractionsPlayground.Live do
         end
     end
   end
-end
 
+  defp assistant_meta(turn) do
+    status = Map.get(turn, :status)
+    interaction_id = Map.get(turn, :interaction_id)
+
+    cond do
+      status in [nil, ""] ->
+        "assistant:"
+
+      status == "queued" ->
+        "assistant: queued"
+
+      true ->
+        bits =
+          []
+          |> maybe_add_meta("status", status)
+          |> maybe_add_meta("id", interaction_id)
+
+        "assistant: " <> Enum.join(bits, "  ")
+    end
+  end
+
+  defp maybe_add_meta(bits, _k, v) when v in [nil, ""], do: bits
+  defp maybe_add_meta(bits, k, v), do: bits ++ ["#{k}=#{v}"]
+
+  defp content_event?(event, payload) do
+    (is_binary(event) and String.starts_with?(event, "content.")) or
+      (is_map(payload) and is_list(payload["outputs"]) and payload["outputs"] != [])
+  end
+
+  defp maybe_content_start(turn, event_name, payload) do
+    if String.contains?(event_name, "content.start") do
+      content_type =
+        case payload do
+          %{"content" => %{"type" => t}} when is_binary(t) and t != "" -> t
+          _ -> nil
+        end
+
+      turn
+      |> finalize_stream_line()
+      |> Map.put(:stream_text, "")
+      |> Map.put(:content_type, content_type)
+    else
+      turn
+    end
+  end
+
+  defp maybe_append_text(turn, event_name, text_part) do
+    cond do
+      not (is_binary(text_part) and text_part != "") ->
+        turn
+
+      Map.get(turn, :content_type) == "thought" ->
+        turn
+
+      String.contains?(event_name, "delta") ->
+        Map.update(turn, :stream_text, text_part, &(&1 <> text_part))
+
+      String.starts_with?(event_name, "content.") ->
+        append_lines(turn, text_part)
+
+      true ->
+        append_lines(turn, text_part)
+    end
+  end
+
+  defp maybe_content_stop(turn, event_name, text_part) do
+    if String.contains?(event_name, "content.stop") and is_binary(text_part) and text_part != "" do
+      turn
+      |> Map.update(:stream_text, text_part, &(&1 <> text_part))
+      |> finalize_stream_line()
+    else
+      turn
+    end
+  end
+
+  defp maybe_finalize_on_stop(turn, event_name) do
+    if String.contains?(event_name, "content.stop") do
+      finalize_stream_line(turn)
+    else
+      turn
+    end
+  end
+
+  defp maybe_outputs(turn, payload) do
+    case payload do
+      %{"outputs" => outputs} when is_list(outputs) ->
+        Enum.reduce(outputs, turn, fn
+          %{"text" => t}, acc when is_binary(t) and t != "" -> append_lines(acc, t)
+          _, acc -> acc
+        end)
+
+      _ ->
+        turn
+    end
+  end
+
+  defp finalize_stream_line(turn) do
+    text = Map.get(turn, :stream_text, "")
+
+    turn
+    |> Map.put(:stream_text, "")
+    |> append_lines(text)
+  end
+
+  defp append_lines(turn, text) when not (is_binary(text) and text != ""), do: turn
+
+  defp append_lines(turn, text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&(&1 != ""))
+    |> Enum.reduce(turn, fn line, acc -> append_line(acc, line) end)
+  end
+
+  defp append_line(turn, line) do
+    norm =
+      line
+      |> String.replace(~r/\s+/, " ")
+      |> String.trim()
+
+    if norm == "" do
+      turn
+    else
+      seen = Map.get(turn, :seen, MapSet.new())
+
+      if MapSet.member?(seen, norm) do
+        turn
+      else
+        turn
+        |> Map.update(:lines, [line], fn lines -> lines ++ [line] end)
+        |> Map.put(:seen, MapSet.put(seen, norm))
+      end
+    end
+  end
+
+end
