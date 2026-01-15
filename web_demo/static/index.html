@@ -57,9 +57,56 @@
         grid-template-rows: 1fr auto;
         height: calc(100vh - 56px);
       }
+      #panes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        min-height: 0;
+      }
       #log {
         padding: 14px 18px;
         overflow: auto;
+        min-height: 0;
+        border-right: 1px solid rgba(125, 140, 170, 0.25);
+      }
+      #summary {
+        padding: 14px 18px;
+        overflow: auto;
+        min-height: 0;
+      }
+      .paneTitle {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 0 0 10px;
+        letter-spacing: 0.2px;
+        text-transform: uppercase;
+      }
+      .turn {
+        margin: 12px 0;
+        display: grid;
+        gap: 8px;
+      }
+      .bubble {
+        border-radius: 12px;
+        border: 1px solid rgba(125, 140, 170, 0.18);
+        background: rgba(125, 140, 170, 0.08);
+        padding: 10px 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .bubble.user {
+        border-color: rgba(0, 212, 255, 0.35);
+        background: rgba(0, 212, 255, 0.08);
+      }
+      .bubble.assistant {
+        border-color: rgba(122, 162, 255, 0.35);
+        background: rgba(122, 162, 255, 0.06);
+      }
+      .bubble .meta {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 6px;
+        font-family: var(--mono);
       }
       .line {
         font-family: var(--mono);
@@ -137,7 +184,12 @@
     </header>
 
     <main>
-      <div id="log"></div>
+      <div id="panes">
+        <div id="log"></div>
+        <div id="summary">
+          <p class="paneTitle">Summary (human-friendly)</p>
+        </div>
+      </div>
       <form id="chat">
         <input
           id="text"
@@ -152,6 +204,7 @@
 
     <script>
       const log = document.getElementById("log");
+      const summary = document.getElementById("summary");
       const form = document.getElementById("chat");
       const text = document.getElementById("text");
       const clearBtn = document.getElementById("clear");
@@ -163,6 +216,127 @@
         div.textContent = `${label}\n${payload}`.trim();
         log.appendChild(div);
         log.scrollTop = log.scrollHeight;
+      }
+
+      const turns = [];
+      let activeTurn = null;
+      let latestInteractionId = null;
+
+      function setSummaryTitle() {
+        const title = summary.querySelector(".paneTitle");
+        if (!title) return;
+        title.textContent = latestInteractionId
+          ? `Summary (interaction: ${latestInteractionId})`
+          : "Summary (human-friendly)";
+      }
+
+      function createTurn(userText) {
+        const turn = {
+          userText,
+          assistantText: "",
+          status: "",
+          interactionId: null,
+          assistantNode: null,
+          metaNode: null,
+        };
+
+        const wrap = document.createElement("div");
+        wrap.className = "turn";
+
+        const userBubble = document.createElement("div");
+        userBubble.className = "bubble user";
+        userBubble.textContent = userText;
+        wrap.appendChild(userBubble);
+
+        const assistantBubble = document.createElement("div");
+        assistantBubble.className = "bubble assistant";
+
+        const meta = document.createElement("span");
+        meta.className = "meta";
+        meta.textContent = "assistant: (waiting…)";
+        assistantBubble.appendChild(meta);
+
+        const assistantTextNode = document.createElement("div");
+        assistantTextNode.textContent = "";
+        assistantBubble.appendChild(assistantTextNode);
+
+        wrap.appendChild(assistantBubble);
+
+        summary.appendChild(wrap);
+        summary.scrollTop = summary.scrollHeight;
+
+        turn.assistantNode = assistantTextNode;
+        turn.metaNode = meta;
+        return turn;
+      }
+
+      function updateTurnMeta(turn) {
+        const bits = [];
+        if (turn.status) bits.push(`status=${turn.status}`);
+        if (turn.interactionId) bits.push(`id=${turn.interactionId}`);
+        turn.metaNode.textContent = bits.length ? `assistant: ${bits.join("  ")}` : "assistant:";
+      }
+
+      function extractInteractionId(data) {
+        if (!data || typeof data !== "object") return null;
+        if (data.interaction && typeof data.interaction === "object" && typeof data.interaction.id === "string") {
+          return data.interaction.id;
+        }
+        if (typeof data.id === "string") return data.id;
+        return null;
+      }
+
+      function extractStatus(data) {
+        if (!data || typeof data !== "object") return null;
+        if (typeof data.status === "string") return data.status;
+        if (data.interaction && typeof data.interaction === "object" && typeof data.interaction.status === "string") {
+          return data.interaction.status;
+        }
+        if (data.status_update && typeof data.status_update === "object" && typeof data.status_update.status === "string") {
+          return data.status_update.status;
+        }
+        return null;
+      }
+
+      function extractText(data) {
+        if (typeof data === "string") return data;
+        if (!data || typeof data !== "object") return null;
+
+        const direct =
+          (typeof data.text === "string" && data.text) ||
+          (typeof data.delta === "string" && data.delta) ||
+          (typeof data.output_text === "string" && data.output_text);
+        if (direct) return direct;
+
+        if (data.content && typeof data.content === "object") {
+          if (typeof data.content.text === "string" && data.content.text) return data.content.text;
+          if (typeof data.content.delta === "string" && data.content.delta) return data.content.delta;
+          if (Array.isArray(data.content.parts)) {
+            const parts = data.content.parts
+              .map((p) => (p && typeof p === "object" && typeof p.text === "string" ? p.text : ""))
+              .filter(Boolean);
+            if (parts.length) return parts.join("");
+          }
+        }
+
+        if (Array.isArray(data.outputs)) {
+          const parts = [];
+          for (const out of data.outputs) {
+            if (out && typeof out === "object") {
+              if (typeof out.text === "string" && out.text) parts.push(out.text);
+              if (out.content && typeof out.content === "object") {
+                if (Array.isArray(out.content.parts)) {
+                  for (const p of out.content.parts) {
+                    if (p && typeof p === "object" && typeof p.text === "string" && p.text) parts.push(p.text);
+                  }
+                }
+              }
+            }
+          }
+          if (parts.length) return parts.join("");
+        }
+
+        return null;
       }
 
       const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -184,9 +358,45 @@
           }
           if (msg.type === "interactions.error" || msg.type === "local.error") {
             addLine("err", `[${msg.type}]`, msg);
+            if (activeTurn) {
+              activeTurn.status = "error";
+              updateTurnMeta(activeTurn);
+            }
             return;
           }
           addLine("", `[${msg.type}] ${msg.event || ""}`.trim(), msg);
+
+          if (msg.type === "interactions.sse") {
+            if (!activeTurn) return;
+
+            const interactionId = extractInteractionId(msg.data);
+            if (interactionId) {
+              activeTurn.interactionId = interactionId;
+              latestInteractionId = interactionId;
+              setSummaryTitle();
+              updateTurnMeta(activeTurn);
+            }
+
+            const status = extractStatus(msg.data);
+            if (status) {
+              activeTurn.status = status;
+              updateTurnMeta(activeTurn);
+            }
+
+            const textPart = extractText(msg.data);
+            if (textPart) {
+              const isDelta = typeof msg.event === "string" && msg.event.includes("delta");
+              if (isDelta) {
+                activeTurn.assistantText += textPart;
+              } else if (!activeTurn.assistantText) {
+                activeTurn.assistantText = textPart;
+              } else if (textPart.length > activeTurn.assistantText.length) {
+                activeTurn.assistantText = textPart;
+              }
+              activeTurn.assistantNode.textContent = activeTurn.assistantText;
+              summary.scrollTop = summary.scrollHeight;
+            }
+          }
         };
       }
 
@@ -197,6 +407,8 @@
         const value = text.value.trim();
         if (!value) return;
         addLine("user", "[user]", { text: value });
+        activeTurn = createTurn(value);
+        turns.push(activeTurn);
         ws.send(value);
         text.value = "";
         text.focus();
@@ -204,6 +416,10 @@
 
       clearBtn.addEventListener("click", () => {
         log.innerHTML = "";
+        summary.innerHTML = '<p class="paneTitle">Summary (human-friendly)</p>';
+        turns.length = 0;
+        activeTurn = null;
+        latestInteractionId = null;
       });
     </script>
   </body>

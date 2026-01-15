@@ -50,3 +50,4 @@ Build a minimal **text-only** local web GUI that gives a “feel” for Gemini *
 - 2026-01-15: Checked Interactions API docs for concurrency implications of `previous_interaction_id` (sequencing is a client responsibility).
 - 2026-01-15: Updated `GOOGLE_INTERACTIONS_API_FINDINGS.md` with the key behavioral notes (state, streaming, resume, cancellation, ordering).
 - 2026-01-15: Added explicit source links for key behavioral notes in `GOOGLE_INTERACTIONS_API_FINDINGS.md`.
+- 2026-01-15: Split web demo UI into left raw-event log and right human-friendly summary view (`web_demo/static/index.html`).
