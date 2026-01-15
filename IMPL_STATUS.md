@@ -53,3 +53,4 @@ Build a minimal **text-only** local web GUI that gives a “feel” for Gemini *
 - 2026-01-15: Split web demo UI into left raw-event log and right human-friendly summary view (`web_demo/static/index.html`).
 - 2026-01-15: Added `request_id` correlation so the summary view assigns streamed content to the correct user input, even when multiple prompts are queued (`web_demo/app.py`, `web_demo/static/index.html`).
 - 2026-01-15: Updated summary view to show multiple content items per prompt (render as one line per content/message), not just a single collapsed final text (`web_demo/static/index.html`).
+- 2026-01-15: Fixed content extraction for streamed `content.delta` (delta object with `text`) and suppressed empty lines from `thought` streams (`web_demo/static/index.html`).
