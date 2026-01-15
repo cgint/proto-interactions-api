@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gemini Interactions API — minimal stream demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0b0d12;
+        --panel: #121624;
+        --muted: #a3adc2;
+        --text: #e7ecf8;
+        --accent: #7aa2ff;
+        --user: #00d4ff;
+        --err: #ff6b6b;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f6f8ff;
+          --panel: #ffffff;
+          --muted: #4b5568;
+          --text: #111827;
+          --accent: #245dff;
+          --user: #0f766e;
+          --err: #b42318;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      }
+      header {
+        padding: 16px 18px;
+        border-bottom: 1px solid rgba(125, 140, 170, 0.25);
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 650;
+        letter-spacing: 0.2px;
+      }
+      header .hint {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      main {
+        display: grid;
+        grid-template-rows: 1fr auto;
+        height: calc(100vh - 56px);
+      }
+      #log {
+        padding: 14px 18px;
+        overflow: auto;
+      }
+      .line {
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-break: break-word;
+        padding: 8px 10px;
+        margin: 8px 0;
+        background: rgba(125, 140, 170, 0.08);
+        border: 1px solid rgba(125, 140, 170, 0.18);
+        border-radius: 10px;
+      }
+      .line .k {
+        color: var(--muted);
+      }
+      .line.user {
+        border-color: rgba(0, 212, 255, 0.35);
+        background: rgba(0, 212, 255, 0.08);
+      }
+      .line.user .k {
+        color: var(--user);
+      }
+      .line.err {
+        border-color: rgba(255, 107, 107, 0.45);
+        background: rgba(255, 107, 107, 0.08);
+      }
+      .line.err .k {
+        color: var(--err);
+      }
+      form {
+        padding: 14px 18px 18px;
+        border-top: 1px solid rgba(125, 140, 170, 0.25);
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 10px;
+        background: color-mix(in oklab, var(--panel) 90%, transparent);
+      }
+      input[type="text"] {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid rgba(125, 140, 170, 0.35);
+        background: var(--panel);
+        color: var(--text);
+        padding: 10px 12px;
+        font-size: 13px;
+        outline: none;
+      }
+      input[type="text"]:focus {
+        border-color: color-mix(in oklab, var(--accent) 70%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+      }
+      button {
+        border-radius: 10px;
+        border: 1px solid rgba(125, 140, 170, 0.35);
+        background: var(--panel);
+        color: var(--text);
+        padding: 10px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: color-mix(in oklab, var(--accent) 55%, transparent);
+        background: color-mix(in oklab, var(--accent) 15%, var(--panel));
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Gemini Interactions API — minimal streaming demo</h1>
+      <div class="hint">
+        Type and press Enter. Use <span style="font-family: var(--mono)">/new</span> to reset
+        conversation.
+      </div>
+    </header>
+
+    <main>
+      <div id="log"></div>
+      <form id="chat">
+        <input
+          id="text"
+          type="text"
+          autocomplete="off"
+          placeholder="Ask something… (e.g. 'Explain SSE in 2 sentences')"
+        />
+        <button class="primary" type="submit">Send</button>
+        <button id="clear" type="button">Clear</button>
+      </form>
+    </main>
+
+    <script>
+      const log = document.getElementById("log");
+      const form = document.getElementById("chat");
+      const text = document.getElementById("text");
+      const clearBtn = document.getElementById("clear");
+
+      function addLine(kind, label, obj) {
+        const div = document.createElement("div");
+        div.className = `line ${kind || ""}`.trim();
+        const payload = obj === undefined ? "" : JSON.stringify(obj, null, 2);
+        div.textContent = `${label}\n${payload}`.trim();
+        log.appendChild(div);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = `${proto}://${location.host}/ws`;
+      let ws;
+
+      function connect() {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => addLine("", "[local] connected", { wsUrl });
+        ws.onclose = () => addLine("err", "[local] disconnected", {});
+        ws.onerror = () => addLine("err", "[local] websocket error", {});
+        ws.onmessage = (ev) => {
+          let msg;
+          try {
+            msg = JSON.parse(ev.data);
+          } catch {
+            addLine("", "[server]", { raw: ev.data });
+            return;
+          }
+          if (msg.type === "interactions.error" || msg.type === "local.error") {
+            addLine("err", `[${msg.type}]`, msg);
+            return;
+          }
+          addLine("", `[${msg.type}] ${msg.event || ""}`.trim(), msg);
+        };
+      }
+
+      connect();
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const value = text.value.trim();
+        if (!value) return;
+        addLine("user", "[user]", { text: value });
+        ws.send(value);
+        text.value = "";
+        text.focus();
+      });
+
+      clearBtn.addEventListener("click", () => {
+        log.innerHTML = "";
+      });
+    </script>
+  </body>
+</html>
