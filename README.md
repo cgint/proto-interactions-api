@@ -1,25 +1,32 @@
 # proto-interactions-api
 
-Minimal local demo for the Gemini **Interactions API** that shows streaming events in a browser UI.
+This repo is a tiny “first feel” demo for Google’s Gemini **Interactions API**.
 
-## Prereqs
+You open a local web page, type a message, and immediately see the **live stream of events** coming back (status updates, incremental output chunks, etc.). It’s intentionally text-only and minimal—meant for learning what “interactive” feels like, not for building a full chat product.
 
-- Python 3.10+ (3.12+ recommended)
-- `GEMINI_API_KEY` exported in your shell
+## What you can do here
 
-## Run
+- Ask a question in the browser and watch the response arrive as a stream of events.
+- Send another message and keep the same conversation going (the demo keeps context for your current browser session).
+- Type `/new` to start a fresh conversation.
+
+## Quick start
+
+Prereq: `GEMINI_API_KEY` must be set in your environment.
 
 ```bash
 uv sync
-
 uv run python -m web_demo --reload --port 8000
 ```
 
-Open:
+Open `http://localhost:8000/`.
 
-- `http://localhost:8000/`
+## Defaults (so you know what you’re testing)
 
-Notes:
+- Model: `gemini-2.5-flash`
+- Streaming: on (events are forwarded to the browser as they arrive)
+- Session behavior: conversation state is kept per browser session while the WebSocket is open
 
-- Send text; the server calls Interactions API with `model="gemini-2.5-flash"` and `stream=true`.
-- Use `/new` (or `/reset`) to clear `previous_interaction_id` for that browser session.
+## Notes
+
+- The Interactions API can store interactions to support state/background work; be mindful of what you send and check the official docs for retention details.

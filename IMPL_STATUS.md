@@ -45,3 +45,4 @@ Build a minimal **text-only** local web GUI that gives a “feel” for Gemini *
 - 2026-01-15: Sanity checks: `web_demo/app.py` compiles and imports.
 - 2026-01-15: Converted to `uv` + `pyproject.toml`; added `interactions-web` entrypoint; removed `requirements.txt`.
 - 2026-01-15: Adjusted `uv` workflow to use `uv run python -m web_demo` (no packaged entry points).
+- 2026-01-15: Rewrote `README.md` to explain the repo from a user perspective (what you’ll experience and how to try it).
