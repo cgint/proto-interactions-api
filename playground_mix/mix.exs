@@ -7,6 +7,7 @@ defmodule InteractionsPlayground.MixProject do
       version: "0.1.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
+      listeners: listeners(),
       deps: deps()
     ]
   end
@@ -26,8 +27,16 @@ defmodule InteractionsPlayground.MixProject do
       {:phoenix, "~> 1.7"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_view, "~> 1.0"},
-      {:phoenix_live_reload, "~> 1.5"},
+      {:phoenix_live_reload, "~> 1.5", only: :dev},
       {:phoenix_pubsub, "~> 2.1"}
     ]
+  end
+
+  defp listeners do
+    if Mix.env() == :dev do
+      [Phoenix.CodeReloader]
+    else
+      []
+    end
   end
 end

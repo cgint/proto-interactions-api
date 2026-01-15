@@ -19,3 +19,5 @@ config :interactions_playground, InteractionsPlayground.Endpoint,
   live_view: [signing_salt: "interactions_playground_salt"]
 
 config :logger, :console, format: "[$level] $message\n"
+
+import_config "#{config_env()}.exs"

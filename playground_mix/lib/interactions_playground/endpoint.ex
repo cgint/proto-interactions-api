@@ -7,6 +7,12 @@ defmodule InteractionsPlayground.Endpoint do
     signing_salt: "signing_salt"
   ]
 
+  if code_reloading? do
+    socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
+    plug Phoenix.CodeReloader
+    plug Phoenix.LiveReloader
+  end
+
   socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
   plug Plug.Logger

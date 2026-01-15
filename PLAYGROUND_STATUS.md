@@ -43,6 +43,9 @@ Create a **shareable launcher** for a Phoenix LiveView Playground that mimics th
     - SSE updates are routed by `turn_id` so each in-flight stream updates its own turn
     - `previous_interaction_id` advances based on the latest consecutively-completed turn (preserves ordering even if streams complete out-of-order)
     - Fixed a crash caused by unhandled Task result messages (`{ref, result}`) from `Task.Supervisor.async_nolink/2`.
+  - Restored dev-time LiveReload/code reloading in `playground_mix/`:
+    - added `config/dev.exs` + `import_config "#{config_env()}.exs"` and wired `Phoenix.LiveReloader`/`Phoenix.CodeReloader`
+    - added required Mix listener (`listeners: [Phoenix.CodeReloader]`) to avoid runtime warnings
 - Not verified (runtime):
   - Running `Mix.install/1` may need network access to fetch deps the first time.
   - Interactions API SSE field shapes should be validated against real traffic.
