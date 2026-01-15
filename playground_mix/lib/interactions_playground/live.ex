@@ -11,12 +11,11 @@ defmodule InteractionsPlayground.Live do
       |> assign(
         model: Config.default_model(),
         draft: "",
-        streaming?: false,
         previous_interaction_id: nil,
         latest_interaction_id: nil,
         log: [],
         turns: [],
-        active_turn_id: nil,
+        tasks: %{},
         init_error: nil
       )
       |> log_line(:info, "[local] mounted", %{
@@ -35,7 +34,7 @@ defmodule InteractionsPlayground.Live do
     ~H"""
     <div class="page">
       <header>
-        <h1>Gemini Interactions API — minimal streaming demo (LiveView)</h1>
+        <h1>Gemini Interactions API — Minimal streaming demo (LiveView)</h1>
         <div class="hint">
           Type and press Enter. Use <span class="mono">/new</span> to reset conversation.
         </div>
@@ -94,12 +93,12 @@ defmodule InteractionsPlayground.Live do
             value={@draft}
             autocomplete="off"
             placeholder="Ask something… (e.g. 'Explain SSE in 2 sentences')"
-            disabled={@streaming? or @init_error != nil}
+            disabled={@init_error != nil}
           />
-          <button class="primary" type="submit" disabled={@streaming? or @init_error != nil}>
-            {if @streaming?, do: "Streaming…", else: "Send"}
+          <button class="primary" type="submit" disabled={@init_error != nil}>
+            Send
           </button>
-          <button type="button" phx-click="clear" disabled={@streaming?}>Clear</button>
+          <button type="button" phx-click="clear">Clear</button>
         </.form>
 
         <%= if @init_error do %>
@@ -241,11 +240,6 @@ defmodule InteractionsPlayground.Live do
   end
 
   @impl true
-  def handle_event("send", %{"text" => _text}, %{assigns: %{streaming?: true}} = socket) do
-    {:noreply,
-     log_line(socket, :err, "[local] busy", %{message: "already streaming; wait for completion"})}
-  end
-
   def handle_event("send", %{"text" => text}, socket) do
     value = text |> to_string() |> String.trim()
 
@@ -266,11 +260,11 @@ defmodule InteractionsPlayground.Live do
       true ->
         turn_id = System.unique_integer([:positive, :monotonic])
         lv_pid = self()
+        prev_id = socket.assigns.previous_interaction_id
 
         socket =
           socket
           |> assign(draft: "")
-          |> assign(streaming?: true, active_turn_id: turn_id)
           |> append_turn(%{
             id: turn_id,
             user_text: value,
@@ -280,17 +274,21 @@ defmodule InteractionsPlayground.Live do
             seen: MapSet.new(),
             status: "queued",
             interaction_id: nil,
+            previous_interaction_id: prev_id,
             error: nil
           })
           |> log_line(:user, "[user]", %{text: value})
 
-        Task.start(fn ->
-          InteractionsClient.stream_interaction(lv_pid, %{
-            model: socket.assigns.model,
-            text: value,
-            previous_interaction_id: socket.assigns.previous_interaction_id
-          })
-        end)
+        task =
+          Task.Supervisor.async_nolink(InteractionsPlayground.TaskSupervisor, fn ->
+            InteractionsClient.stream_interaction(lv_pid, turn_id, %{
+              model: socket.assigns.model,
+              text: value,
+              previous_interaction_id: prev_id
+            })
+          end)
+
+        socket = assign(socket, tasks: Map.put(socket.assigns.tasks, task.ref, turn_id))
 
         {:noreply, socket}
     end
@@ -302,46 +300,49 @@ defmodule InteractionsPlayground.Live do
      assign(socket,
        log: [],
        turns: [],
-       active_turn_id: nil,
+       tasks: %{},
        latest_interaction_id: nil
      )}
   end
 
   @impl true
-  def handle_info({:local_request, request}, socket) do
+  def handle_info({:local_request, turn_id, request}, socket) do
     socket =
       socket
       |> log_line(:info, "[local.request]", %{request: request})
-      |> update_active_turn(fn turn -> %{turn | status: "streaming"} end)
+      |> update_turn(turn_id, fn turn -> %{turn | status: "streaming"} end)
 
     {:noreply, socket}
   end
 
-  def handle_info({:interactions_error, %{status_code: status, body: body}}, socket) do
+  def handle_info({:interactions_error, turn_id, %{status_code: status, body: body}}, socket) do
     socket =
       socket
       |> log_line(:err, "[interactions.error]", %{status_code: status, body: body})
-      |> set_active_turn_error("HTTP #{status}")
-      |> assign(streaming?: false)
+      |> set_turn_error(turn_id, "HTTP #{status}")
 
     {:noreply, socket}
   end
 
-  def handle_info({:local_error, %{message: message}}, socket) do
+  def handle_info({:local_error, turn_id, %{message: message}}, socket) do
     socket =
       socket
       |> log_line(:err, "[local.error]", %{message: message})
-      |> set_active_turn_error(message)
-      |> assign(streaming?: false)
+      |> set_turn_error(turn_id, message)
 
     {:noreply, socket}
   end
 
-  def handle_info(:interactions_done, socket) do
-    {:noreply, assign(socket, streaming?: false)}
+  def handle_info({:interactions_done, turn_id}, socket) do
+    socket =
+      socket
+      |> mark_turn_done(turn_id)
+      |> advance_conversation_head()
+
+    {:noreply, socket}
   end
 
-  def handle_info({:interactions_sse, %{event: event, id: id, data: payload}}, socket) do
+  def handle_info({:interactions_sse, turn_id, %{event: event, id: id, data: payload}}, socket) do
     socket =
       socket
       |> log_line(:info, "[interactions.sse] #{event || ""}" |> String.trim(), %{
@@ -349,41 +350,76 @@ defmodule InteractionsPlayground.Live do
         id: id,
         data: payload
       })
-      |> maybe_update_interaction_id(payload)
-      |> maybe_update_status(payload)
-      |> maybe_update_text(event, payload)
+      |> maybe_update_interaction_id(turn_id, payload)
+      |> maybe_update_status(turn_id, payload)
+      |> maybe_update_text(turn_id, event, payload)
 
     {:noreply, socket}
   end
 
-  defp maybe_update_interaction_id(socket, payload) do
+  def handle_info({ref, _result}, socket) when is_reference(ref) do
+    case Map.pop(socket.assigns.tasks, ref) do
+      {nil, _tasks} ->
+        {:noreply, socket}
+
+      {_turn_id, tasks} ->
+        Process.demonitor(ref, [:flush])
+        {:noreply, assign(socket, tasks: tasks)}
+    end
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, socket) do
+    case Map.fetch(socket.assigns.tasks, ref) do
+      {:ok, turn_id} ->
+        socket =
+          socket
+          |> assign(tasks: Map.delete(socket.assigns.tasks, ref))
+          |> maybe_set_turn_down_error(turn_id, reason)
+          |> advance_conversation_head()
+
+        {:noreply, socket}
+
+      :error ->
+        {:noreply, socket}
+    end
+  end
+
+  defp maybe_set_turn_down_error(socket, _turn_id, :normal), do: socket
+  defp maybe_set_turn_down_error(socket, _turn_id, :shutdown), do: socket
+  defp maybe_set_turn_down_error(socket, _turn_id, {:shutdown, _}), do: socket
+
+  defp maybe_set_turn_down_error(socket, turn_id, reason) do
+    set_turn_error(socket, turn_id, "task exited: " <> Exception.format_exit(reason))
+  end
+
+  defp maybe_update_interaction_id(socket, turn_id, payload) do
     interaction_id = extract_interaction_id(payload)
 
     if is_binary(interaction_id) and interaction_id != "" do
       socket
-      |> assign(previous_interaction_id: interaction_id, latest_interaction_id: interaction_id)
-      |> update_active_turn(fn turn -> %{turn | interaction_id: interaction_id} end)
+      |> assign(latest_interaction_id: interaction_id)
+      |> update_turn(turn_id, fn turn -> %{turn | interaction_id: interaction_id} end)
     else
       socket
     end
   end
 
-  defp maybe_update_status(socket, payload) do
+  defp maybe_update_status(socket, turn_id, payload) do
     status = extract_status(payload)
 
     if is_binary(status) and status != "" do
-      update_active_turn(socket, fn turn -> %{turn | status: status} end)
+      update_turn(socket, turn_id, fn turn -> %{turn | status: status} end)
     else
       socket
     end
   end
 
-  defp maybe_update_text(socket, event, payload) do
+  defp maybe_update_text(socket, turn_id, event, payload) do
     if content_event?(event, payload) do
       event_name = if is_binary(event), do: event, else: ""
       text_part = extract_text(payload)
 
-      update_active_turn(socket, fn turn ->
+      update_turn(socket, turn_id, fn turn ->
         turn
         |> maybe_content_start(event_name, payload)
         |> maybe_append_text(event_name, text_part)
@@ -491,19 +527,61 @@ defmodule InteractionsPlayground.Live do
     assign(socket, turns: socket.assigns.turns ++ [turn])
   end
 
-  defp update_active_turn(socket, fun) do
-    active_id = socket.assigns.active_turn_id
-
+  defp update_turn(socket, turn_id, fun) do
     turns =
       Enum.map(socket.assigns.turns, fn turn ->
-        if turn.id == active_id, do: fun.(turn), else: turn
+        if turn.id == turn_id, do: fun.(turn), else: turn
       end)
 
     assign(socket, turns: turns)
   end
 
-  defp set_active_turn_error(socket, message) do
-    update_active_turn(socket, fn turn -> %{turn | error: message, status: "error"} end)
+  defp set_turn_error(socket, turn_id, message) do
+    update_turn(socket, turn_id, fn turn -> %{turn | error: message, status: "error"} end)
+    |> drop_task_for_turn(turn_id)
+  end
+
+  defp mark_turn_done(socket, turn_id) do
+    socket
+    |> update_turn(turn_id, fn turn ->
+      status = Map.get(turn, :status)
+      if status in [nil, "", "queued", "streaming"], do: %{turn | status: "done"}, else: turn
+    end)
+    |> drop_task_for_turn(turn_id)
+  end
+
+  defp drop_task_for_turn(socket, turn_id) do
+    tasks =
+      Enum.reduce(socket.assigns.tasks, %{}, fn {ref, id}, acc ->
+        if id == turn_id, do: acc, else: Map.put(acc, ref, id)
+      end)
+
+    assign(socket, tasks: tasks)
+  end
+
+  defp advance_conversation_head(socket) do
+    head_id =
+      socket.assigns.turns
+      |> Enum.reduce_while(nil, fn turn, acc ->
+        if turn_done_with_id?(turn) do
+          {:cont, Map.get(turn, :interaction_id)}
+        else
+          {:halt, acc}
+        end
+      end)
+
+    if is_binary(head_id) and head_id != "" do
+      assign(socket, previous_interaction_id: head_id, latest_interaction_id: head_id)
+    else
+      socket
+    end
+  end
+
+  defp turn_done_with_id?(turn) do
+    status = Map.get(turn, :status)
+    interaction_id = Map.get(turn, :interaction_id)
+
+    is_binary(interaction_id) and interaction_id != "" and status in ["completed", "done"]
   end
 
   defp log_line(socket, kind, label, payload) do
@@ -545,7 +623,7 @@ defmodule InteractionsPlayground.Live do
           |> maybe_add_meta("status", status)
           |> maybe_add_meta("id", interaction_id)
 
-        "assistant: " <> Enum.join(bits, "  ")
+        "assistant: " <> Enum.join(bits, " ")
     end
   end
 

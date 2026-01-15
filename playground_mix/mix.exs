@@ -26,6 +26,7 @@ defmodule InteractionsPlayground.MixProject do
       {:phoenix, "~> 1.7"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_view, "~> 1.0"},
+      {:phoenix_live_reload, "~> 1.5"},
       {:phoenix_pubsub, "~> 2.1"}
     ]
   end

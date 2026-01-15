@@ -2,7 +2,7 @@ defmodule InteractionsPlayground.InteractionsClient do
   alias InteractionsPlayground.Config
   alias InteractionsPlayground.SSE
 
-  def stream_interaction(lv_pid, %{
+  def stream_interaction(lv_pid, turn_id, %{
         model: model,
         text: user_text,
         previous_interaction_id: prev_id
@@ -27,7 +27,7 @@ defmodule InteractionsPlayground.InteractionsClient do
 
     send(
       lv_pid,
-      {:local_request, %{model: model, previous_interaction_id: prev_id, stream: true}}
+      {:local_request, turn_id, %{model: model, previous_interaction_id: prev_id, stream: true}}
     )
 
     request =
@@ -60,7 +60,7 @@ defmodule InteractionsPlayground.InteractionsClient do
               _ -> %{"raw" => ev.data}
             end
 
-          send(lv_pid, {:interactions_sse, %{event: ev.event, id: ev.id, data: payload}})
+          send(lv_pid, {:interactions_sse, turn_id, %{event: ev.event, id: ev.id, data: payload}})
         end)
 
         %{acc | buffer: buffer}
@@ -74,17 +74,21 @@ defmodule InteractionsPlayground.InteractionsClient do
 
     case result do
       {:ok, %{status: status, error_body: body}} when is_integer(status) and status >= 400 ->
-        send(lv_pid, {:interactions_error, %{status_code: status, body: body}})
+        send(lv_pid, {:interactions_error, turn_id, %{status_code: status, body: body}})
+        :ok
 
       {:ok, _} ->
-        send(lv_pid, :interactions_done)
+        send(lv_pid, {:interactions_done, turn_id})
+        :ok
 
       {:error, reason} ->
-        send(lv_pid, {:local_error, %{message: Exception.format_exit(reason)}})
+        send(lv_pid, {:local_error, turn_id, %{message: Exception.format_exit(reason)}})
+        :ok
     end
   rescue
     e ->
-      send(lv_pid, {:local_error, %{message: Exception.message(e)}})
+      send(lv_pid, {:local_error, turn_id, %{message: Exception.message(e)}})
+      :ok
   end
 
   defp maybe_put_previous(map, nil), do: map

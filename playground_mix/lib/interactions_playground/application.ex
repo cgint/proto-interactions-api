@@ -10,6 +10,7 @@ defmodule InteractionsPlayground.Application do
     children = [
       {Phoenix.PubSub, name: InteractionsPlayground.PubSub},
       {Finch, name: InteractionsPlayground.Finch},
+      {Task.Supervisor, name: InteractionsPlayground.TaskSupervisor},
       InteractionsPlayground.Endpoint
     ]
 

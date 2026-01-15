@@ -38,6 +38,11 @@ Create a **shareable launcher** for a Phoenix LiveView Playground that mimics th
     - renders assistant output as a list of message lines (deduped) with a streaming line while deltas arrive
     - ignores `content` of type `"thought"`
     - sets `assistant: queued` → `status=streaming` on `local.request`
+  - Enabled concurrent sends in the Mix variant (`playground_mix/`):
+    - input is never disabled during streaming; multiple turns can be `queued`/`streaming` simultaneously
+    - SSE updates are routed by `turn_id` so each in-flight stream updates its own turn
+    - `previous_interaction_id` advances based on the latest consecutively-completed turn (preserves ordering even if streams complete out-of-order)
+    - Fixed a crash caused by unhandled Task result messages (`{ref, result}`) from `Task.Supervisor.async_nolink/2`.
 - Not verified (runtime):
   - Running `Mix.install/1` may need network access to fetch deps the first time.
   - Interactions API SSE field shapes should be validated against real traffic.
