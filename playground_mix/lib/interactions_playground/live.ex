@@ -157,10 +157,13 @@ defmodule InteractionsPlayground.Live do
         border: 1px solid rgba(125, 140, 170, 0.18);
         background: rgba(125, 140, 170, 0.08);
         padding: 10px 12px;
-        white-space: pre-wrap;
         word-break: break-word;
       }
-      .bubble.user { border-color: rgba(0, 212, 255, 0.35); background: rgba(0, 212, 255, 0.08); }
+      .bubble.user {
+        border-color: rgba(0, 212, 255, 0.35);
+        background: rgba(0, 212, 255, 0.08);
+        white-space: pre-wrap;
+      }
       .bubble.assistant { border-color: rgba(122, 162, 255, 0.35); background: rgba(122, 162, 255, 0.06); }
       .bubble .meta { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); }
       .msgs { display: grid; gap: 6px; }
