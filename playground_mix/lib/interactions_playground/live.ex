@@ -183,7 +183,6 @@ defmodule InteractionsPlayground.Live do
         font-family: var(--mono);
         font-size: 12px;
         line-height: 1.35;
-        white-space: pre-wrap;
         word-break: break-word;
         padding: 8px 10px;
         margin: 8px 0;
