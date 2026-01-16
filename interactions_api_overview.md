@@ -62,12 +62,6 @@ If you want one clean storyline, you do one interaction at a time. If you start 
 
 *Branching allows for exploring different directions, but the client must track which ID to use for the next step.*
 
-## How Concurrency Looks In This Repo
-
-- **Python demo (`web_demo/`)**: one message streams at a time per WebSocket.
-- **Phoenix LiveView demo (`playground_mix/`)**: multiple messages can be in-flight; each gets its own task and its own stream of events.
-- **Keeping order**: the LiveView demo tracks the `previous_interaction_id` to maintain a logical sequence even if events arrive out-of-order.
-
 ## How To Think About "Branching" (Simple Mental Model)
 
 Imagine each interaction is a card in a stack. If you always add the next card on top of the newest completed card, you get one straight stack (linear).
@@ -88,6 +82,12 @@ Note: the official Interactions docs focus on `previous_interaction_id` (continu
 
 - This explainer is based on (a) what this repo’s demos implement (streaming SSE events, `previous_interaction_id`, concurrency patterns) and (b) the official links above, as already summarized in `GOOGLE_INTERACTIONS_API_FINDINGS.md`.
 - I re-checked key claims (state via `previous_interaction_id`, tool calls via `function_call`/`function_result`, and stream resumption via `last_event_id`) against the official `ai.google.dev` pages using Perplexity web search; where wording goes beyond what the docs explicitly say, it’s labeled as a client-side pattern.
+
+## How Concurrency Looks In This Repo
+
+- **Python demo (`web_demo/`)**: one message streams at a time per WebSocket.
+- **Phoenix LiveView demo (`playground_mix/`)**: multiple messages can be in-flight; each gets its own task and its own stream of events.
+- **Keeping order**: the LiveView demo tracks the `previous_interaction_id` to maintain a logical sequence even if events arrive out-of-order.
 
 ## Generating The SVGs
 
