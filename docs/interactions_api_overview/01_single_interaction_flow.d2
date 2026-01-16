@@ -1,0 +1,38 @@
+direction: right
+
+title: "Single Interaction (High Level)"
+
+person: "You" {
+  style.fill: "#FFF2CC"
+  style.stroke: "#CC9900"
+}
+
+ui: "App UI\n(web page / app)" {
+  style.fill: "#D9E8FF"
+  style.stroke: "#2F6FED"
+}
+
+server: "Your server\n(your code)" {
+  style.fill: "#E7F6EC"
+  style.stroke: "#2E7D32"
+}
+
+api: "Gemini Interactions API\n(Google)" {
+  style.fill: "#F2E8FF"
+  style.stroke: "#7B1FA2"
+}
+
+model: "Model or Agent\n(thinks + acts)" {
+  style.fill: "#FCE4EC"
+  style.stroke: "#C2185B"
+}
+
+person -> ui: "type/speak/upload\n(text, images, files…)"
+ui -> server: "send request"
+server -> api: "create interaction\n(streaming on)"
+api -> model: "runs the turn"
+model -> api: "events as it works"
+api -> server: "event stream"
+server -> ui: "forward events"
+ui -> person: "live updates\n(status + partial output)"
+

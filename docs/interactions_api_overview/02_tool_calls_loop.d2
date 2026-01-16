@@ -1,0 +1,26 @@
+direction: right
+
+title: "Tool Calls (How Actions Get Done)"
+
+person: "You" { style.fill: "#FFF2CC"; style.stroke: "#CC9900" }
+ui: "App UI" { style.fill: "#D9E8FF"; style.stroke: "#2F6FED" }
+server: "Your server\n(tool runner)" { style.fill: "#E7F6EC"; style.stroke: "#2E7D32" }
+model: "Model/Agent" { style.fill: "#FCE4EC"; style.stroke: "#C2185B" }
+tools: "Tools\n(your functions)" { style.fill: "#FFFFFF"; style.stroke: "#6B7280" }
+systems: "Real world systems\n(DB, calendar, web, APIs)" { style.fill: "#FFF7ED"; style.stroke: "#C2410C" }
+
+person -> ui: "ask for something"
+ui -> server: "send input"
+server -> model: "start interaction"
+
+model -> server: "tool call request\n\"please do X\""
+server -> tools: "run tool"
+tools -> systems: "read/write"
+systems -> tools: "result"
+tools -> server: "tool result"
+server -> model: "send tool result"
+
+model -> server: "final answer\n(or more tool calls)"
+server -> ui: "stream updates"
+ui -> person: "see progress + result"
+

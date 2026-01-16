@@ -1,0 +1,30 @@
+direction: right
+
+title: "Mixing Modalities (Text + More)"
+
+in: "Input you send" {
+  style.fill: "#D9E8FF"
+  style.stroke: "#2F6FED"
+  text: "Can be a bundle:\n- text\n- images\n- audio\n- files\n- structured data"
+}
+
+interaction: "One Interaction\n(one turn)" {
+  style.fill: "#F2E8FF"
+  style.stroke: "#7B1FA2"
+}
+
+thinking: "Model/Agent\ncombines everything" {
+  style.fill: "#FCE4EC"
+  style.stroke: "#C2185B"
+}
+
+out: "Output you receive" {
+  style.fill: "#E7F6EC"
+  style.stroke: "#2E7D32"
+  text: "Can also be a bundle:\n- text\n- structured data\n- images/audio\n- tool calls + results\n- progress events"
+}
+
+in -> interaction: "submit"
+interaction -> thinking: "process"
+thinking -> out: "stream back"
+

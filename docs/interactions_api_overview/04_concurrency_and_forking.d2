@@ -1,0 +1,39 @@
+direction: down
+
+title: "Many Interactions: Stay Linear or Fork"
+
+legend: "Key idea" {
+  style.fill: "#FFFFFF"
+  style.stroke: "#6B7280"
+  text: "Each interaction is one turn.\nTo continue a conversation, you point to the previous completed one.\nIf you start two from the same previous one, you get a fork."
+}
+
+linear_section: "Linear (one at a time)" {
+  style.fill: "#E7F6EC"
+  style.stroke: "#2E7D32"
+
+  A: "Interaction A\n(done)" { style.fill: "#F2E8FF"; style.stroke: "#7B1FA2" }
+  B: "Interaction B\n(done)" { style.fill: "#F2E8FF"; style.stroke: "#7B1FA2" }
+  C: "Interaction C\n(done)" { style.fill: "#F2E8FF"; style.stroke: "#7B1FA2" }
+
+  A -> B: "previous = A"
+  B -> C: "previous = B"
+}
+
+fork_section: "Fork (parallel branches)" {
+  style.fill: "#FFF7ED"
+  style.stroke: "#C2410C"
+
+  P: "Interaction P\n(done)" { style.fill: "#F2E8FF"; style.stroke: "#7B1FA2" }
+  X: "Interaction X\n(done)" { style.fill: "#F2E8FF"; style.stroke: "#7B1FA2" }
+  Y: "Interaction Y\n(done)" { style.fill: "#F2E8FF"; style.stroke: "#7B1FA2" }
+  Z: "Next interaction\n(pick one branch)" { style.fill: "#D9E8FF"; style.stroke: "#2F6FED" }
+
+  P -> X: "previous = P"
+  P -> Y: "previous = P"
+  X -> Z: "previous = X"
+  Y -> Z: "(or previous = Y)"
+}
+
+legend -> linear_section: ""
+linear_section -> fork_section: ""
