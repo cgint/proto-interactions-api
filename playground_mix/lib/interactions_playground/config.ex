@@ -1,6 +1,6 @@
 defmodule InteractionsPlayground.Config do
   @interactions_base "https://generativelanguage.googleapis.com/v1beta/interactions"
-  @default_model "gemini-2.5-flash"
+  @default_model "gemini-3.8-flash"
 
   def default_model, do: @default_model
 

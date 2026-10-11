@@ -17,7 +17,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 INTERACTIONS_BASE_URL = "https://generativelanguage.googleapis.com"
 INTERACTIONS_VERSION = "v1beta"
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
 
 
 def _require_api_key() -> str:

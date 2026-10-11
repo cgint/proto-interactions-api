@@ -1,7 +1,7 @@
 defmodule InteractionsPlayground.Config do
   @interactions_base_url "https://generativelanguage.googleapis.com"
   @interactions_version "v1beta"
-  @default_model "gemini-2.5-flash"
+  @default_model "gemini-3.8-flash"
 
   def interactions_url do
     "#{@interactions_base_url}/#{@interactions_version}/interactions"
